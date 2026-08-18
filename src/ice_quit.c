@@ -234,7 +234,7 @@ proc_function(int code, WPARAM wparam, LPARAM lparam)
                 }
                 default:
                 {
-                    proc_message(pcs->message, pcs->wParam);
+                    proc_message(pcs->message, (int)pcs->wParam);
                     break;
                 }
             }
