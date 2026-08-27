@@ -296,6 +296,12 @@ HookSHGetKnownFolderPath(REFKNOWNFOLDERID rfid,DWORD dwFlags,HANDLE hToken,PWSTR
         {
             return S_FALSE;
         }
+    #if defined(DLL_INJECT)
+        if (browser_times_compare(appdata_path, 7))
+        {
+            return sSHGetKnownFolderPathStub(rfid,dwFlags,hToken,ppszPath);
+        }
+    #endif
         *ppszPath = CoTaskMemAlloc(sizeof(appdata_path));
         if (!*ppszPath)
         {
@@ -547,7 +553,9 @@ init_hook_data(const bool gpu)
     }
     else
     {
+    #ifndef DLL_INJECT
         CloseHandle((HANDLE)_beginthreadex(NULL, 0, &init_exeception, NULL, 0, NULL));
+    #endif
     #ifdef _LOGDEBUG
         logmsg("GPU process runing, pid = %lu\n", GetCurrentProcessId());
     #endif

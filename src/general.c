@@ -4,6 +4,10 @@
 #include <ctype.h>
 #include <time.h>
 #include <io.h>
+#if defined(DLL_INJECT)
+#include <sys/types.h>
+#include <sys/stat.h>
+#endif
 #include <process.h>
 #include <shlwapi.h>
 #include <tlhelp32.h>
@@ -1504,3 +1508,22 @@ browser_child_process(LPCWSTR pline)
     }
     return ret;
 }
+
+#if defined(DLL_INJECT)
+bool WINAPI
+browser_times_compare(LPCWSTR appdt, int sec)
+{
+    WCHAR *xpath = _wgetenv(L"XRE_PROFILE_PATH");
+    if (xpath || get_xre_path(appdt))
+    {
+        WCHAR lock[MAX_BUFF] = {0};
+        struct _stat buf = {0};
+        _snwprintf(lock, MAX_BUFF - 1, L"%s\\parent.lock", xpath ? xpath : xre_profile_path);
+        if (_wstat(lock, &buf) == 0)
+        {
+            return time(NULL) - buf.st_mtime > (time_t)sec;
+        }
+    }
+    return false;
+}
+#endif
