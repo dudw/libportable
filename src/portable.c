@@ -297,7 +297,7 @@ HookSHGetKnownFolderPath(REFKNOWNFOLDERID rfid,DWORD dwFlags,HANDLE hToken,PWSTR
             return S_FALSE;
         }
     #if defined(DLL_INJECT)
-        if (browser_times_compare(appdata_path, 7))
+        if (_wgetenv(L"LIBPORTABLE_UI_PROCESS") && browser_times_compare(appdata_path, 7))
         {
             return sSHGetKnownFolderPathStub(rfid,dwFlags,hToken,ppszPath);
         }
@@ -349,6 +349,9 @@ init_portable(void)
         int func_num = sizeof(api_tables)/sizeof(api_tables[0]);
         if ((shell32 = GetModuleHandleW(L"shell32.dll")) == NULL)
         {
+        #ifdef _LOGDEBUG
+            logmsg("GetModuleHandleW(shell32.dll) failed\n");
+        #endif
             return;
         }
         if (!m_target[0])
@@ -542,11 +545,14 @@ init_hook_data(const bool gpu)
         }
         if (_wgetenv(L"LIBPORTABLE_SETUP_DEFINED") || wcreate_dir(appdt))
         {
+        #if defined(DLL_INJECT)
+            _wputenv(L"LIBPORTABLE_UI_PROCESS=1");
+        #endif
             init_portable();
             init_safed();
             init_exequit();
         #ifdef _LOGDEBUG
-            logmsg("UI process runing, pid = %lu\n", GetCurrentProcessId());
+            logmsg("UI process runing, pid = %lu, MOZ_APP_DATA[%s]\n", GetCurrentProcessId(), getenv("MOZ_APP_DATA"));
         #endif
         }
         CloseHandle(mutex);

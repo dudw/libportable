@@ -1448,18 +1448,10 @@ get_process_name(LPWSTR name, DWORD wlen)
 }
 
 bool WINAPI
-is_specialapp(LPCWSTR appname)
-{
-    WCHAR process_name[VALUE_LEN+1] = {0};
-    get_process_name(process_name, VALUE_LEN);
-    return (_wcsicmp(process_name, appname) == 0);
-}
-
-bool WINAPI
 is_browser(void)
 {
-    WCHAR process_name[VALUE_LEN+1] = {0};
-    get_process_name(process_name, VALUE_LEN);
+    WCHAR process_name[MAX_PATH] = {0};
+    get_process_name(process_name, MAX_PATH - 1);
     return (_wcsicmp(process_name, L"Iceweasel.exe") == 0 ||
             _wcsicmp(process_name, L"firefox.exe") == 0 ||
             _wcsicmp(process_name, L"zen.exe") == 0 ||

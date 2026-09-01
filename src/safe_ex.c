@@ -24,6 +24,32 @@ static _CreateProcessInternalW sCreateProcessInternalW;
 
 #ifdef DLL_INJECT
 static volatile long upgrade_ok = 0;
+
+static bool
+is_specialapp(LPCWSTR appname)
+{
+    WCHAR process_name[MAX_PATH] = {0};
+    get_process_name(process_name, MAX_PATH - 1);
+    return (_wcsicmp(process_name, appname) == 0);
+}
+
+static bool
+is_crashhelper_desc(LPCWSTR image_path, LPCWSTR cmd_path)
+{
+    LPCWSTR lpfile = image_path && image_path[0] ? image_path : cmd_path;
+    return lpfile ? StrStrIW(lpfile, L"crashhelper.exe") : false;
+}
+
+static bool
+is_brower_desc(LPCWSTR path)
+{
+    return path ?
+           StrStrIW(path, L"\\Iceweasel.exe") ||
+           StrStrIW(path, L"\\firefox.exe") ||
+           StrStrIW(path, L"\\zen.exe") ||
+           StrStrIW(path, L"\\librewolf.exe")
+           : false;
+}
 #endif
 
 static bool in_whitelist(LPCWSTR lpfile)
@@ -178,11 +204,17 @@ trace_command(LPCWSTR image_path, LPCWSTR cmd_path)
     if (lpfile)
     {
         child = browser_child_process(lpfile);
+    #if defined(DLL_INJECT)
+        if (!child)
+        {
+            child = !is_brower_desc(lpfile);
+        }
+    #endif
     }
     if (!child && (g_mutex = CreateFileMappingW(INVALID_HANDLE_VALUE, NULL, PAGE_READONLY, 0, sizeof(bool), LIBTBL_LOCK)))
     {
     #ifdef _LOGDEBUG
-        logmsg("we set LIBPORTABLE_LAUNCHER_PROCESS=1, g_mutex  = 0x%p\n", g_mutex);
+        logmsg("we set [LIBPORTABLE_LAUNCHER_PROCESS=1], g_mutex  = 0x%p\n", g_mutex);
     #endif
     }
 }
@@ -233,7 +265,7 @@ HookNtCreateUserProcess(PHANDLE ProcessHandle,PHANDLE ThreadHandle,
     RTL_USER_PROCESS_PARAMETERS myProcessParameters;
     trace_command(ProcessParameters->ImagePathName.Buffer, ProcessParameters->CommandLine.Buffer);
 #ifdef DLL_INJECT
-    if (StrStrIW(ProcessParameters->ImagePathName.Buffer, L"crashhelper.exe"))
+    if (is_crashhelper_desc(ProcessParameters->ImagePathName.Buffer, ProcessParameters->CommandLine.Buffer))
     {
         // 此进程使用硬编码在用户目录生成文件, 重定向导致目录错乱, 见:
         // https://searchfox.org/firefox-release/source/toolkit/crashreporter/crash_helper_server/src/logging/env.rs#48

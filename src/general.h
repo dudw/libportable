@@ -115,9 +115,7 @@ extern bool     WINAPI check_arg(LPCWSTR warg, LPCWSTR sub1, LPCWSTR sub2);
 extern bool     WINAPI get_appdt_path(WCHAR *ini, int len);
 extern bool     WINAPI get_localdt_path(WCHAR *ini, int len);
 extern DWORD    WINAPI get_os_version(void);
-extern bool     WINAPI is_specialapp(LPCWSTR appname);
 extern bool     WINAPI get_process_name(LPWSTR name, DWORD wlen);
-extern bool     WINAPI is_specialapp(LPCWSTR appname);
 extern bool     WINAPI is_browser(void);
 extern bool     WINAPI browser_child_process(LPCWSTR pline);
 #if defined(DLL_INJECT)

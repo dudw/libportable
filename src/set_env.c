@@ -127,19 +127,22 @@ setenv_tt(void)
                         _snwprintf(env_localdt, MAX_BUFF, L"XRE_PROFILE_LOCAL_PATH=%s", xre_profile_local_path);
                         crt_setenv(env_localdt);
                     }
-                    if (*xre_profile_path && _wgetenv(L"MOZ_APP_DATA") == NULL)
-                    {
-                        _snwprintf(env_appdt, MAX_BUFF, L"MOZ_APP_DATA=%s\\AppData\\Mozilla\\Firefox", xre_profile_path);
-                        crt_setenv(env_appdt);
-                    #ifdef _LOGDEBUG
-                        logmsg("we setup MOZ_APP_DATA\n");
-                    #endif
-                    }
-                    if (*xre_profile_local_path && _wgetenv(L"MOZ_LOCAL_APP_DATA") == NULL)
-                    {
-                        _snwprintf(env_localdt, MAX_BUFF, L"MOZ_LOCAL_APP_DATA=%s", xre_profile_local_path);
-                        crt_setenv(env_localdt);
-                    }
+                }
+                if (*xre_profile_path && _wgetenv(L"MOZ_APP_DATA") == NULL)
+                {
+                    _snwprintf(env_appdt, MAX_BUFF, L"MOZ_APP_DATA=%s\\AppData", xre_profile_path);
+                    crt_setenv(env_appdt);
+                #ifdef _LOGDEBUG
+                    logmsg("we setup MOZ_APP_DATA\n");
+                #endif
+                }
+                if (*xre_profile_local_path && _wgetenv(L"MOZ_LOCAL_APP_DATA") == NULL)
+                {
+                    _snwprintf(env_localdt, MAX_BUFF, L"MOZ_LOCAL_APP_DATA=%s", xre_profile_local_path);
+                    crt_setenv(env_localdt);
+                #ifdef _LOGDEBUG
+                    logmsg("we setup MOZ_LOCAL_APP_DATA\n");
+                #endif
                 }
                 if (true)
                 {
