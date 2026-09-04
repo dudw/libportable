@@ -2,7 +2,6 @@
 #define TETE_BUILD
 #endif
 
-#include "ice_quit.h"
 #include "general.h"
 #include "bosskey.h"
 #include "on_tabs.h"
@@ -10,24 +9,20 @@
 #include "json_paser.h"
 #include "new_process.h"
 #include "portable.h"
+#include "ice_quit.h"
 #include <process.h>
-
-#define PORTABLE_UP    (WM_USER + 0x4E20)
-#define PORTABLE_BOS_0 (PORTABLE_UP + 0x1)
-#define PORTABLE_TAB_0 (PORTABLE_UP + 0x2)
-#define PORTABLE_TAB_1 (PORTABLE_UP + 0x3)
-#define PORTABLE_TAB_2 (PORTABLE_UP + 0x4)
-#define PORTABLE_TAB_3 (PORTABLE_UP + 0x5)
-#define PORTABLE_TAB_4 (PORTABLE_UP + 0x6)
-#define PORTABLE_TAB_5 (PORTABLE_UP + 0x7)
-#define PORTABLE_TAB_6 (PORTABLE_UP + 0x8)
-#define PORTABLE_TAB_7 (PORTABLE_UP + 0x9)
-#define PORTABLE_UBO   (PORTABLE_UP + 0x10)
-#define PORTABLE_CHR   (PORTABLE_UP + 0x11)
 
 static HHOOK proc_hook = NULL;
 static HWND  proc_hwnd = NULL;
 static volatile long proc_once = 0;
+
+#ifdef DLL_INJECT
+typedef VOID (WINAPI *ExitProcessPtr)(UINT uExitCode);
+static ExitProcessPtr pExitProcess, sExitProcess;
+
+extern void window_hooks(void);
+extern void wait_observer(void);
+#endif
 
 static unsigned WINAPI
 proc_thread(void *lparam)
@@ -53,7 +48,7 @@ proc_tab_envent(const int ids, const char *key)
 }
 
 static void
-proc_message(int msg, int vaule)
+proc_message(int msg, intptr_t vaule)
 {
     switch (msg)
     {
@@ -181,10 +176,34 @@ proc_message(int msg, int vaule)
             }
             break;
         }
+    #if defined(DLL_INJECT)
+        case PORTABLE_HOOK:
+        {
+            proc_hwnd = (HWND)vaule;
+            window_hooks();
+        #ifdef _LOGDEBUG
+            logmsg("we recv PORTABLE_HOOK[%p] message\n", proc_hwnd);
+        #endif
+            break;
+        }
+    #endif
         default:
         {
             break;
         }
+    }
+}
+
+static inline void
+proc_unhook(void)
+{
+    if (proc_hook)
+    {
+        UnhookWindowsHookEx(proc_hook);
+        proc_hook = NULL;
+    #ifdef _LOGDEBUG
+        logmsg("proc_unhook runing!\n");
+    #endif
     }
 }
 
@@ -194,50 +213,47 @@ proc_function(int code, WPARAM wparam, LPARAM lparam)
     PCWPSTRUCT pcs = (PCWPSTRUCT)lparam;
     if (pcs)
     {
-        if (!proc_hwnd && !_InterlockedCompareExchange(&proc_once, 1, 0))
+        if (!proc_hwnd && !_InterlockedCompareExchange(&proc_once, 1, 0) && _wgetenv(L"LIBPORTABLE_UI_PROCESS"))
         {
             CloseHandle((HANDLE)_beginthreadex(NULL, 0, &proc_thread, NULL, 0, NULL));
+        #ifdef _LOGDEBUG
+            logmsg("find main window hwnd\n");
+        #endif
         }
-        else if (pcs->hwnd == proc_hwnd)
+        if (proc_hwnd && pcs->hwnd == proc_hwnd && pcs->message == WM_DESTROY)
         {
-            switch (pcs->message)
+            uint32_t bossid;
+        #if defined(DLL_INJECT) || defined(ESR115)
+            if (_wgetenv(L"LIBPORTABLE_FIRST_RUN"))
             {
-                case WM_DESTROY:
+            #ifdef _LOGDEBUG
+                logmsg("we ignore WM_DESTROY message\n");
+            #endif
+                return CallNextHookEx(proc_hook, code, wparam, lparam);
+            }
+        #endif
+        #ifdef _LOGDEBUG
+            logmsg("we recv WM_DESTROY message\n");
+        #endif
+            if ((bossid = get_bosskey_id()) > 0)
+            {
+                PostThreadMessage(bossid, WM_QUIT, 0, 0);
+            }
+            if (ini_read_int("aria2", "close", ini_portable_path, true) > 0)
+            {
+                wchar_t wcmd[MAX_PATH+1] = {0};
+                if (wget_process_directory(wcmd, MAX_PATH))
                 {
-                    uint32_t bossid;
-                #if defined(DLL_INJECT) || defined(ESR115)
-                    if (_wgetenv(L"LIBPORTABLE_FIRST_RUN"))
-                    {
-                    #ifdef _LOGDEBUG
-                        logmsg("we ignore WM_DESTROY message\n");
-                    #endif
-                        break;
-                    }
-                #endif
-                    if ((bossid = get_bosskey_id()) > 0)
-                    {
-                        PostThreadMessage(bossid, WM_QUIT, 0, 0);
-                    }
-                    if (ini_read_int("aria2", "close", ini_portable_path, true) > 0)
-                    {
-                        wchar_t wcmd[MAX_PATH+1] = {0};
-                        if (wget_process_directory(wcmd, MAX_PATH))
-                        {
-                            wp_wcsncat(wcmd, L"\\upcheck.exe -a2quit", MAX_PATH);
-                            CloseHandle(create_new(wcmd, NULL, NULL, 0, NULL));
-                        }
-                    }
-                    UnhookWindowsHookEx(proc_hook);
-                    proc_hook = NULL;
-                    undo_it();
-                    break;
-                }
-                default:
-                {
-                    proc_message(pcs->message, (int)pcs->wParam);
-                    break;
+                    wp_wcsncat(wcmd, L"\\upcheck.exe -a2quit", MAX_PATH);
+                    CloseHandle(create_new(wcmd, NULL, NULL, 0, NULL));
                 }
             }
+            proc_unhook();
+            undo_it();
+        }
+        else
+        {
+            proc_message(pcs->message, (int)pcs->wParam);
         }
     }
     return CallNextHookEx(proc_hook, code, wparam, lparam);
@@ -308,12 +324,24 @@ int ctype_download_caller(int id, const char *url, const char *name, const char 
     return 0;
 }
 
+#ifdef DLL_INJECT
+static WINAPI VOID
+HookExitProcess(UINT uExitCode)
+{
+    wait_observer();
+#ifdef _LOGDEBUG
+    logmsg("[%lu]exitcode = %u!\n", GetCurrentProcessId(), uExitCode);
+#endif
+    return sExitProcess(uExitCode);
+}
+#endif
+
 void WINAPI
-init_exequit(void)
+init_exemsg(uint32_t tid)
 {
     if (e_browser > MOZ_UNKOWN && is_browser())
     {
-        proc_hook = SetWindowsHookExW(WH_CALLWNDPROC, proc_function, dll_module, GetCurrentThreadId());
+        proc_hook = SetWindowsHookExW(WH_CALLWNDPROC, proc_function, dll_module, tid);
         if (proc_hook == NULL)
         {
         #ifdef _LOGDEBUG
@@ -322,3 +350,27 @@ init_exequit(void)
         }
     }
 }
+
+#ifdef DLL_INJECT
+void WINAPI
+init_exequit(void)
+{
+    if (e_browser > MOZ_UNKOWN && is_browser())
+    {
+        HMODULE hkernel;
+        if (!(hkernel = GetModuleHandleW(L"kernel32.dll")))
+        {
+        #ifdef _LOGDEBUG
+            logmsg("GetModuleHandleW(kernel32.dll) failed!\n");
+        #endif
+        }
+        pExitProcess = (ExitProcessPtr)GetProcAddress(hkernel, "ExitProcess");
+        if (!creator_hook(pExitProcess, HookExitProcess, (LPVOID*)&sExitProcess))
+        {
+        #ifdef _LOGDEBUG
+            logmsg("pExitProcess hook failed!\n");
+        #endif
+        }
+    }
+}
+#endif

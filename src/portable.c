@@ -75,6 +75,10 @@ static  SHGetKnownFolderIDListPtr     sSHGetKnownFolderIDListStub = NULL;
 static  SHGetKnownFolderPathPtr       sSHGetKnownFolderPathStub = NULL;
 static  SHGetFolderPathWPtr           sSHGetFolderPathWStub = NULL;
 static  uintptr_t                     m_target[EXCLUDE_NUM] = {0};
+#if defined(DLL_INJECT)
+static  HANDLE                        pthead_observer = NULL;
+static  bool                          stop_requested  = false;
+#endif
 
 typedef void (*pointer_to_handler)();
 typedef struct _dyn_link_desc
@@ -385,24 +389,7 @@ diff_days(void)
     return res;
 }
 
-/* uninstall hook and clean up */
-void
-undo_it(void)
-{
-    close_mutex();
-    /* 反注册uia */
-    un_uia();
-    /* 解除快捷键 */
-    uninstall_bosskey();
-    /* 清理启动过的进程树 */
-    kill_trees();
-    MH_Uninitialize();
-#ifdef _LOGDEBUG
-    logmsg("all clean!\n");
-#endif
-}
-
-unsigned WINAPI
+static unsigned WINAPI
 update_thread(void *lparam)
 {
     WCHAR *pos = NULL;
@@ -466,6 +453,132 @@ update_thread(void *lparam)
     return (1);
 }
 
+#if !defined(DLL_INJECT)
+static
+#endif
+void window_hooks(void)
+{
+    ini_cache plist = iniparser_create_cache(ini_portable_path, false, true);
+    if (plist)
+    {
+        int up = inicache_read_int("General", "Update", &plist);
+        if (e_browser > MOZ_LIBREWOLF)
+        {   // 支持zen以及官方版本更新开关的禁止与启用.
+            fn_update((void *)(uintptr_t)up);
+        }
+        if (e_browser != MOZ_LIBREWOLF && e_browser != MOZ_ZEN)
+        {
+            char *pfast = NULL;
+            uintptr_t ubo = (uintptr_t)inicache_read_int("General", "EnableUBO", &plist);
+            if (inicache_read_string("update", "faster", &pfast, &plist))
+            {
+                ubo |= 0x2;
+                free(pfast);
+            }
+            CloseHandle((HANDLE) _beginthreadex(NULL, 0, &fn_ubo, (void *)ubo, 0, NULL));
+            if (e_browser == MOZ_ICEWEASEL && up > 0)
+            {   // 调用Iceweasel的自动更新进程.
+                CloseHandle((HANDLE)_beginthreadex(NULL, 0, &update_thread, NULL, 0, NULL));
+            }
+        }
+        if (inicache_read_int("General", "CreateCrashDump", &plist) > 0)
+        {
+            CloseHandle((HANDLE)_beginthreadex(NULL, 0, &init_exeception, NULL, 0, NULL));
+        }
+        if (inicache_read_int("General", "OnTabs", &plist) > 0)
+        {
+            threads_on_tabs();
+        }
+        if (inicache_read_int("General", "DisableScan", &plist) > 0)
+        {
+            init_winreg(NULL);
+        }
+        if (inicache_read_int("General", "Bosskey", &plist) > 0)
+        {
+            CloseHandle((HANDLE)_beginthreadex(NULL, 0, &bosskey_thread, NULL, 0, NULL));
+        }
+        if (inicache_read_int("General", "ProxyExe", &plist) > 0)
+        {
+            CloseHandle((HANDLE)_beginthreadex(NULL, 0, &run_process, NULL, 0, NULL));
+        }
+        iniparser_destroy_cache(&plist);
+    }
+}
+
+#ifdef DLL_INJECT
+static unsigned WINAPI
+observer_thread(void *lparam)
+{
+    int count = 54;
+    while (!stop_requested && --count)
+    {
+        Sleep(100);
+    }
+    if (!count)
+    {
+        HWND moz_hwnd = NULL;
+        WNDINFO ice_info = {0};
+        ice_info.hPid = GetCurrentProcessId();
+        moz_hwnd = get_moz_hwnd(&ice_info);
+    #ifdef _LOGDEBUG
+        logmsg("SendMessage(%p) execute\n", moz_hwnd);
+    #endif
+        SendMessageW(moz_hwnd, PORTABLE_HOOK, (intptr_t)moz_hwnd, 0);
+        CloseHandle(pthead_observer);
+        pthead_observer = NULL;
+    }
+#ifdef _LOGDEBUG
+    logmsg("observer_thread[%lu] return\n", GetCurrentThreadId());
+#endif
+    return 0;
+}
+
+static void
+init_observer(void)
+{
+    if (!pthead_observer)
+    {
+        uintptr_t tid = GetCurrentThreadId();
+        pthead_observer = (HANDLE)_beginthreadex(NULL, 0, &observer_thread, (void *)tid, 0, NULL);
+    }
+}
+
+void
+wait_observer(void)
+{
+    if (pthead_observer)
+    {
+        stop_requested = true;
+        MsgWaitForMultipleObjects(
+           1,                // 等待的对象数量
+           &pthead_observer, // 线程句柄
+           FALSE,            // 等待任意一个对象
+           INFINITE,         // 无限等待
+           QS_ALLINPUT       // 监听所有输入事件
+        );
+        CloseHandle(pthead_observer);
+        pthead_observer = NULL;
+    }
+}
+#endif
+
+/* uninstall hook and clean up */
+void
+undo_it(void)
+{
+    close_mutex();
+    /* 反注册uia */
+    un_uia();
+    /* 解除快捷键 */
+    uninstall_bosskey();
+    /* 清理启动过的进程树 */
+    kill_trees();
+    MH_Uninitialize();
+#ifdef _LOGDEBUG
+    logmsg("[%lu]all clean!\n", GetCurrentProcessId());
+#endif
+}
+
 static bool
 init_hook_data(uint32_t mask)
 {
@@ -514,6 +627,7 @@ init_hook_data(uint32_t mask)
     {
         HANDLE mutex = OpenFileMappingW(PAGE_READONLY, false, LIBTBL_LOCK);
         WCHAR *restart = _wgetenv(L"MOZ_APP_RESTART");
+        uint32_t tid = GetCurrentThreadId();
         if (restart)
         {
         #ifdef _LOGDEBUG
@@ -567,8 +681,13 @@ init_hook_data(uint32_t mask)
         #endif
             // 获取子进程参数
             init_safed();
+        #ifdef DLL_INJECT
+            init_exequit();
+            init_exemsg(tid);
+            init_observer();
+        #endif
         #ifdef _LOGDEBUG
-            logmsg("Launcher process runing, mutex = %s, pid = %lu\n", mutex ? "true" : "false", GetCurrentProcessId());
+            logmsg("[%lu]Launcher process runing, mutex = %s\n", GetCurrentProcessId(), mutex ? "true" : "false");
         #endif
             return false;
         }
@@ -577,9 +696,9 @@ init_hook_data(uint32_t mask)
             _wputenv(L"LIBPORTABLE_UI_PROCESS=1");
             init_portable();
             init_safed();
-            init_exequit();
+            init_exemsg(tid);
         #ifdef _LOGDEBUG
-            logmsg("UI process runing, pid = %lu, MOZ_APP_DATA[%s]\n", GetCurrentProcessId(), getenv("MOZ_APP_DATA"));
+            logmsg("[%lu]UI process runing, MOZ_APP_DATA[%s]\n", GetCurrentProcessId(), getenv("MOZ_APP_DATA"));
         #endif
         }
         CloseHandle(mutex);
@@ -626,56 +745,6 @@ child_proces_if(uint32_t *pmask)
         }
     }
     return ret;
-}
-
-static void
-window_hooks(void)
-{
-    ini_cache plist = iniparser_create_cache(ini_portable_path, false, true);
-    if (plist)
-    {
-        int up = inicache_read_int("General", "Update", &plist);
-        if (e_browser > MOZ_LIBREWOLF)
-        {   // 支持官方版本更新开关的禁止与启用.
-            fn_update((void *)(uintptr_t)up);
-        }
-        if (e_browser != MOZ_LIBREWOLF && e_browser != MOZ_ZEN)
-        {
-            char *pfast = NULL;
-            uintptr_t ubo = (uintptr_t)inicache_read_int("General", "EnableUBO", &plist);
-            if (inicache_read_string("update", "faster", &pfast, &plist))
-            {
-                ubo |= 0x2;
-                free(pfast);
-            }
-            CloseHandle((HANDLE) _beginthreadex(NULL, 0, &fn_ubo, (void *)ubo, 0, NULL));
-            if (e_browser == MOZ_ICEWEASEL && up > 0)
-            {   // 调用Iceweasel的自动更新进程.
-                CloseHandle((HANDLE)_beginthreadex(NULL, 0, &update_thread, NULL, 0, NULL));
-            }
-        }
-        if (inicache_read_int("General", "CreateCrashDump", &plist) > 0)
-        {
-            CloseHandle((HANDLE)_beginthreadex(NULL, 0, &init_exeception, NULL, 0, NULL));
-        }
-        if (inicache_read_int("General", "OnTabs", &plist) > 0)
-        {
-            threads_on_tabs();
-        }
-        if (inicache_read_int("General", "DisableScan", &plist) > 0)
-        {
-            init_winreg(NULL);
-        }
-        if (inicache_read_int("General", "Bosskey", &plist) > 0)
-        {
-            CloseHandle((HANDLE)_beginthreadex(NULL, 0, &bosskey_thread, NULL, 0, NULL));
-        }
-        if (inicache_read_int("General", "ProxyExe", &plist) > 0)
-        {
-            CloseHandle((HANDLE)_beginthreadex(NULL, 0, &run_process, NULL, 0, NULL));
-        }
-        iniparser_destroy_cache(&plist);
-    }
 }
 
 void
