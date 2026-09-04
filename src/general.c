@@ -130,7 +130,9 @@ logmsg(const char *format, ...)
 bool
 ini_path_init(void)
 {
-    bool  ret = false;
+    bool ret = false;
+    bool tete = false;
+    WCHAR *p = NULL;
     WCHAR ini_path[MAX_PATH + 1] = {0};
     if (*ini_portable_path != '\0' && strlen(ini_portable_path) > 10)
     {
@@ -140,19 +142,23 @@ ini_path_init(void)
     {
         return false;
     }
-    if ((ret = PathRemoveFileSpecW(ini_path) && PathAppendW(ini_path, L"portable.ini")) == false)
+    if ((p = wcsrchr(ini_path, L'\\')) && wcscmp(&p[1], L"tmemutil.dll") == 0)
+    {
+        tete = true;
+    }
+    if (!(ret = p && ((p[0] = 0) || 0x1) && wp_wcsncat(ini_path, tete ? L"\\tmemutil.ini" : L"\\portable.ini", MAX_PATH) == 0))
     {
         return false;
     }
     if (!PathFileExistsW(ini_path))
     {
         WCHAR ini_example[MAX_PATH + 1] = {0};
-        wcsncpy(ini_example, ini_path, MAX_PATH);
-        if ((ret = PathRemoveFileSpecW(ini_example) && PathAppendW(ini_example, L"tmemutil.ini") && PathFileExistsW(ini_example)) == false)
-        {
-            ret = PathRemoveFileSpecW(ini_example) && PathAppendW(ini_example, L"portable(example).ini") && PathFileExistsW(ini_example);
+        wcscpy(ini_example, ini_path);
+        if (tete && (ret = PathRemoveFileSpecW(ini_example) && PathAppendW(ini_example, L"portable.ini") && PathFileExistsW(ini_example)))
+        {   // 保持兼容性
+            ret = MoveFileExW(ini_example, ini_path, MOVEFILE_WRITE_THROUGH);
         }
-        if (ret)
+        else if ((ret = PathRemoveFileSpecW(ini_example) && PathAppendW(ini_example, L"portable(example).ini") && PathFileExistsW(ini_example)))
         {
             ret = CopyFileW(ini_example, ini_path, true);
         }
