@@ -773,6 +773,7 @@ is_ff_official(void)
     int i = 0;
     m_family var = MOZ_UNKOWN;
     WCHAR *moz_array[] = {L"Iceweasel",
+                          L"SkyKaKapo",
                           L"LibreWolf",
                           L"Zen",
                           L"Firefox",
@@ -799,21 +800,24 @@ is_ff_official(void)
             var = MOZ_ICEWEASEL;
             break;
         case 1:
-            var = MOZ_LIBREWOLF;
+            var = MOZ_SKYKAKAPO;
             break;
         case 2:
-            var = MOZ_ZEN;
+            var = MOZ_LIBREWOLF;
             break;
         case 3:
-            var = MOZ_FIREFOX;
+            var = MOZ_ZEN;
             break;
         case 4:
-            var = MOZ_BETA;
+            var = MOZ_FIREFOX;
             break;
         case 5:
-            var = MOZ_DEV;
+            var = MOZ_BETA;
             break;
         case 6:
+            var = MOZ_DEV;
+            break;
+        case 7:
             var = MOZ_NIGHTLY;
             break;
         default:
@@ -1455,7 +1459,8 @@ is_browser(void)
     return (_wcsicmp(process_name, L"Iceweasel.exe") == 0 ||
             _wcsicmp(process_name, L"firefox.exe") == 0 ||
             _wcsicmp(process_name, L"zen.exe") == 0 ||
-            _wcsicmp(process_name, L"librewolf.exe") == 0
+            _wcsicmp(process_name, L"librewolf.exe") == 0 ||
+            _wcsicmp(process_name, L"skykakapo.exe") == 0
            );
 }
 
@@ -1491,6 +1496,10 @@ browser_child_process(LPCWSTR pline)
             for (int i = 1; i < count; ++i)
             {
                 if ((ret = check_arg(args[i], L"contentproc", L"parentBuildID")))
+                {
+                    break;
+                }
+                if ((ret = check_arg(args[i], L"backgroundtask", NULL)))
                 {
                     break;
                 }

@@ -51,7 +51,8 @@ is_brower_desc(LPCWSTR path)
         WCHAR *processes[] = {L"Iceweasel.exe",
                               L"firefox.exe",
                               L"zen.exe",
-                              L"librewolf.exe"
+                              L"librewolf.exe",
+                              L"skykakapo.exe"
                              };
         const int count = sizeof(processes)/sizeof(processes[0]);
         for(int num = 0; num < count; ++num)
