@@ -410,6 +410,7 @@ update_thread(void *lparam)
     WCHAR temp[MAX_PATH+1] = {0};
     WCHAR path[MAX_PATH+1] = {0};
     WCHAR wcmd[MAX_BUFF+1] = {0};
+    WCHAR profd[MAX_PATH+1] = {0};
     if (_wgetenv(L"LIBPORTABLE_SETUP_DEFINED"))
     {
     #ifdef _LOGDEBUG
@@ -434,12 +435,19 @@ update_thread(void *lparam)
     }
     if (true)
     {
+        // 进程所在目录
         wcsncpy(dirs, path, ++pos-path);
+        wcscpy(profd, temp);
+        // 配置文件目录
+        PathRemoveFileSpecW(profd);
+        PathRemoveFileSpecW(profd);
+        PathRemoveFileSpecW(profd);
+        // 解压包所在目录
         wp_wcsncat(temp, L"\\Mozilla\\updates", MAX_PATH);
     }
     if (ini_read_int("update", "be_ready", ini_portable_path, true) > 0)
     {
-        _snwprintf(wcmd, MAX_BUFF, L"%s"_UPDATE L"-k %lu -e \"%s\" -s \"%s\" -u 1", dirs, GetCurrentProcessId(), temp, path);
+        _snwprintf(wcmd, MAX_BUFF, L"%s"_UPDATE L"-k %lu -e \"%s\" -s \"%s\" -u \"%s\"", dirs, GetCurrentProcessId(), temp, path, profd);
         CloseHandle(create_new(wcmd, NULL, NULL, 0, NULL));
     #ifdef _LOGDEBUG
         logmsg("update_thread will install!\n");
