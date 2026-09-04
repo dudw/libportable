@@ -35,6 +35,8 @@
 #endif
 
 #define NONTEMPORAL_16K 0x4000u
+#define HAS_GPU  0x1
+#define HAS_BGT  0x2
 
 #ifdef _LOGDEBUG
 extern __declspec(dllimport) char **environ;
@@ -457,9 +459,10 @@ update_thread(void *lparam)
 }
 
 static bool
-init_hook_data(const bool gpu)
+init_hook_data(uint32_t mask)
 {
     WCHAR appdt[MAX_PATH] = {0};
+    bool gpu = mask & HAS_GPU;
     if (!ini_path_init())
     {
     #ifdef _LOGDEBUG
@@ -481,7 +484,25 @@ init_hook_data(const bool gpu)
     #endif
         return false;
     }
-    if (!gpu)
+    if (gpu)
+    {
+    #ifndef DLL_INJECT
+        CloseHandle((HANDLE)_beginthreadex(NULL, 0, &init_exeception, NULL, 0, NULL));
+    #endif
+    #ifdef _LOGDEBUG
+        logmsg("GPU process runing, pid = %lu\n", GetCurrentProcessId());
+    #endif
+        return false;
+    }
+    if (mask & HAS_BGT)
+    {
+        init_portable();
+    #ifdef _LOGDEBUG
+        logmsg("Backgroundtask process runing, pid = %lu\n", GetCurrentProcessId());
+    #endif
+        return false;
+    }
+    if (true)
     {
         HANDLE mutex = OpenFileMappingW(PAGE_READONLY, false, LIBTBL_LOCK);
         WCHAR *restart = _wgetenv(L"MOZ_APP_RESTART");
@@ -545,9 +566,7 @@ init_hook_data(const bool gpu)
         }
         if (_wgetenv(L"LIBPORTABLE_SETUP_DEFINED") || wcreate_dir(appdt))
         {
-        #if defined(DLL_INJECT)
             _wputenv(L"LIBPORTABLE_UI_PROCESS=1");
-        #endif
             init_portable();
             init_safed();
             init_exequit();
@@ -557,21 +576,11 @@ init_hook_data(const bool gpu)
         }
         CloseHandle(mutex);
     }
-    else
-    {
-    #ifndef DLL_INJECT
-        CloseHandle((HANDLE)_beginthreadex(NULL, 0, &init_exeception, NULL, 0, NULL));
-    #endif
-    #ifdef _LOGDEBUG
-        logmsg("GPU process runing, pid = %lu\n", GetCurrentProcessId());
-    #endif
-        return false;
-    }
     return true;
 }
 
 static bool
-child_proces_if(bool *pg)
+child_proces_if(uint32_t *pmask)
 {
     bool ret = false;
     if (e_browser > MOZ_UNKOWN)
@@ -584,15 +593,20 @@ child_proces_if(bool *pg)
             {
                 if (e_browser == MOZ_ICEWEASEL && _wcsicmp(args[count - 1], L"gpu") == 0)
                 {
-                    if (pg)
+                    if (pmask)
                     {
-                        *pg = true;
+                        *pmask |= HAS_GPU;
                     }
                 }
                 else
                 {
                     for (int i = 1; i < count; ++i)
                     {
+                        if (check_arg(args[i], L"backgroundtask", NULL))
+                        {
+                            *pmask |= HAS_BGT;
+                            break;
+                        }
                         if ((ret = check_arg(args[i], L"contentproc", L"parentBuildID")))
                         {
                             break;
@@ -661,9 +675,9 @@ do_it(void)
 {
     if (!_wgetenv(L"LIBPORTABLE_WONT_EANBLED"))
     {
-        bool has_gpu = false;
+        uint32_t mask = 0;
         e_browser = is_ff_official();
-        if (initialize_memset() && !child_proces_if(&has_gpu) && init_hook_data(has_gpu))
+        if (initialize_memset() && !child_proces_if(&mask) && init_hook_data(mask))
         {
             if (e_browser > MOZ_UNKOWN && !no_gui_boot())
             {
