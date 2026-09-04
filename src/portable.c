@@ -639,7 +639,7 @@ window_hooks(void)
         {   // 支持官方版本更新开关的禁止与启用.
             fn_update((void *)(uintptr_t)up);
         }
-        if (e_browser == MOZ_ICEWEASEL || e_browser == MOZ_FIREFOX)
+        if (e_browser != MOZ_LIBREWOLF && e_browser != MOZ_ZEN)
         {
             char *pfast = NULL;
             uintptr_t ubo = (uintptr_t)inicache_read_int("General", "EnableUBO", &plist);
