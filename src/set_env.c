@@ -130,7 +130,20 @@ setenv_tt(void)
                 }
                 if (*xre_profile_path && _wgetenv(L"MOZ_APP_DATA") == NULL)
                 {
-                    _snwprintf(env_appdt, MAX_BUFF, L"MOZ_APP_DATA=%s\\AppData", xre_profile_path);
+                #if defined(DLL_INJECT)
+                    if (e_browser == MOZ_LIBREWOLF)
+                    {
+                        _snwprintf(env_appdt, MAX_BUFF, L"MOZ_APP_DATA=%s\\AppData\\librewolf", xre_profile_path);
+                    }
+                    else if (e_browser == MOZ_ZEN)
+                    {
+                        _snwprintf(env_appdt, MAX_BUFF, L"MOZ_APP_DATA=%s\\AppData\\zen", xre_profile_path);
+                    }
+                    else
+                #endif
+                    {
+                        _snwprintf(env_appdt, MAX_BUFF, L"MOZ_APP_DATA=%s\\AppData\\Mozilla\\Firefox", xre_profile_path);
+                    }
                     crt_setenv(env_appdt);
                 #ifdef _LOGDEBUG
                     logmsg("we setup MOZ_APP_DATA\n");
