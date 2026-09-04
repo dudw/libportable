@@ -39,18 +39,33 @@ is_crashhelper_desc(LPCWSTR image_path, LPCWSTR cmd_path)
     LPCWSTR lpfile = image_path && image_path[0] ? image_path : cmd_path;
     return lpfile ? StrStrIW(lpfile, L"crashhelper.exe") : false;
 }
+#endif
 
 static bool
 is_brower_desc(LPCWSTR path)
 {
-    return path ?
-           StrStrIW(path, L"\\Iceweasel.exe") ||
-           StrStrIW(path, L"\\firefox.exe") ||
-           StrStrIW(path, L"\\zen.exe") ||
-           StrStrIW(path, L"\\librewolf.exe")
-           : false;
+    WCHAR temp[MAX_PATH] = {0};
+    GetModuleFileNameW(NULL,temp, MAX_PATH - 1);
+    if (path && PathRemoveFileSpecW(temp))
+    {
+        WCHAR *processes[] = {L"Iceweasel.exe",
+                              L"firefox.exe",
+                              L"zen.exe",
+                              L"librewolf.exe"
+                             };
+        const int count = sizeof(processes)/sizeof(processes[0]);
+        for(int num = 0; num < count; ++num)
+        {
+            WCHAR browser_list[MAX_PATH] = {0};
+            _snwprintf(browser_list, MAX_PATH - 1, L"%s\\%s", temp, processes[num]);
+            if (_wcsnicmp(path[0] == L'"' ? &path[1] : path, browser_list, wcslen(browser_list)) == 0)
+            {
+                return true;
+            }
+        }
+    }
+    return false;
 }
-#endif
 
 static bool in_whitelist(LPCWSTR lpfile)
 {
@@ -133,10 +148,10 @@ static bool in_whitelist(LPCWSTR lpfile)
 static bool
 process_cui(LPCWSTR lpfile)
 {
-    WCHAR   lpname[VALUE_LEN+1] = {0};
+    WCHAR   lpname[MAX_PATH+1] = {0};
     LPCWSTR sZfile = lpfile;
     int     n;
-    if (lpfile == NULL || *lpfile == L'\0' || wcslen(lpfile) >= VALUE_LEN)
+    if (lpfile == NULL || *lpfile == L'\0' || wcslen(lpfile) >= MAX_PATH)
     {
         return true;
     }
@@ -151,7 +166,7 @@ process_cui(LPCWSTR lpfile)
     }
     else
     {
-        wcsncpy(lpname,sZfile,VALUE_LEN);
+        wcsncpy(lpname,sZfile,MAX_PATH);
     }
     if (wcslen(lpname)>3)
     {
@@ -201,20 +216,14 @@ trace_command(LPCWSTR image_path, LPCWSTR cmd_path)
 {
     bool    child = false;
     LPCWSTR lpfile = cmd_path ? cmd_path : image_path;
-    if (lpfile)
+    if (lpfile && !(child = browser_child_process(lpfile)))
     {
-        child = browser_child_process(lpfile);
-    #if defined(DLL_INJECT)
-        if (!child)
-        {
-            child = !is_brower_desc(lpfile);
-        }
-    #endif
+        child = !is_brower_desc(lpfile);
     }
     if (!child && (g_mutex = CreateFileMappingW(INVALID_HANDLE_VALUE, NULL, PAGE_READONLY, 0, sizeof(bool), LIBTBL_LOCK)))
     {
     #ifdef _LOGDEBUG
-        logmsg("we set [LIBPORTABLE_LAUNCHER_PROCESS=1], g_mutex  = 0x%p\n", g_mutex);
+        logmsg("[%ls] set [LIBPORTABLE_LAUNCHER_PROCESS=1], g_mutex  = 0x%p\n", lpfile, g_mutex);
     #endif
     }
 }
