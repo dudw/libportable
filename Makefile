@@ -38,7 +38,7 @@ ifeq ($(ESR115), 1)
 CFLAGS += -DESR115
 CFLAGS += -fms-compatibility-version=19.39
 else
-CFLAGS += -fms-compatibility-version=19.50
+CFLAGS += -fms-compatibility-version=19.51
 endif
 
 ifneq ($(MOZ_FETCHES_DIR),)

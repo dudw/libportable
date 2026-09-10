@@ -14,8 +14,8 @@ if [ "$esr115" = "1" ]; then
   export cl_version="14.39.33519"
   export sdk_version="10.0.22621.0"
 else
-  export cl_version="14.50.35717"
-  export sdk_version="10.0.26100.0"
+  export cl_version="14.51.36231"
+  export sdk_version="10.0.28000.0"
 fi
 
 if [ -z "$MOZ_FETCHES_DIR" ]; then
